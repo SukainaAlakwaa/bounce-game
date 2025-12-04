@@ -3,7 +3,11 @@ kaboom({
   width: 560,
   height: 940,
   background: [0, 0, 0],
+
+  stretch: true,
+  letterbox: true,  
 });
+
 
 setGravity(1600);
 
