@@ -1,17 +1,25 @@
-//KABOOM SETUP 
+// KABOOM SETUP 
 kaboom({
   width: 560,
   height: 940,
   background: [0, 0, 0],
-
   stretch: true,
-  letterbox: true,  
+  letterbox: true,
+  global: true,   // so kaboom funcs are global
+  debug: true,    // optional
 });
-
 
 setGravity(1600);
 
-//LOAD IMAGES
+// track current level for retry
+let currentLevel = "water";
+
+// LOAD IMAGES
+loadSprite("waterbg", "lvl1imgs/waterbg.png");
+loadSprite("waterbg2", "lvl1imgs/waterbg2.jpg");
+loadSprite("waterbg3", "lvl1imgs/waterbg3.jpg");
+loadSprite("bubbles", "lvl1imgs/bubbles.png");
+
 loadSprite("ball", "ball.png");
 loadSprite("earthBg", "lvl2imgs/Earthbg.jpg");
 loadSprite("bg2", "lvl2imgs/bg2.jpg");
@@ -25,22 +33,10 @@ loadSprite("airbg3", "lvl3imgs/Skybg3.png");
 loadSprite("cloud", "lvl3imgs/Cloud.png");
 loadSprite("gust", "lvl3imgs/gust.png");
 
-
 const levelBadge = document.getElementById("levelBadge");
 const retryBadge = document.getElementById("retryBadge");
 
-// keep track of which scene we're on so Retry knows where to go
-let currentScene = "earth";
-
-// Make the Retry image actually restart the current level
-if (retryBadge) {
-  retryBadge.addEventListener("click", () => {
-    hideRetryBadge();
-    go(currentScene);
-  });
-}
-
-
+// ---------- BADGE HELPERS ----------
 function showLevelBadge(imgFile, altText) {
   if (!levelBadge) return;
   if (imgFile) levelBadge.src = imgFile;
@@ -65,26 +61,236 @@ function hideRetryBadge() {
   retryBadge.style.display = "none";
 }
 
-//SCENE: EARTH LEVEL
-scene("earth", () => {
+// ONE retry handler only – restart the current level
+if (retryBadge) {
+  retryBadge.addEventListener("click", () => {
+    hideRetryBadge();
+    // you can hide the level badge too if you want:
+    // hideLevelBadge();
+    go(currentLevel);
+  });
+}
 
-  // show Level 2 badge when this scene starts
-  showLevelBadge("lvl2imgs/Level2.png", "Level 2");
+// =======================
+// SCENE: WATER LEVEL (LEVEL 1)
+// =======================
+scene("water", () => {
+  currentLevel = "water";
+
+  showLevelBadge("Level1.png", "Level 1");
   showRetryBadge("retry.png", "retry");
 
-  //BACKGROUND SETUP
+  // ---- BACKGROUND SETUP ----
   const BG_WIDTH = 1080;
   const BG_HEIGHT = 1920;
 
   const BG_SCALE = Math.max(
     width() / BG_WIDTH,
-    height() / BG_HEIGHT
+    height() / BG_HEIGHT,
   ) * 1.05;
 
   const centerX = width() / 2;
   const centerY = height() / 2;
 
-  // bottom background
+  // repeat the SAME waterbg 3 times to make a tall level
+  add([
+    sprite("waterbg"),
+    pos(centerX, centerY),
+    anchor("center"),
+    scale(BG_SCALE),
+    z(-2),
+  ]);
+
+  add([
+    sprite("waterbg2"),
+    pos(centerX, centerY - BG_HEIGHT * BG_SCALE),
+    anchor("center"),
+    scale(BG_SCALE),
+    z(-2),
+  ]);
+
+  add([
+    sprite("waterbg3"),
+    pos(centerX, centerY - BG_HEIGHT * BG_SCALE * 2),
+    anchor("center"),
+    scale(BG_SCALE),
+    z(-2),
+  ]);
+
+  // ---- INVISIBLE GROUND (BALL STANDS ON CORAL) ----
+  const GROUND_Y = 860;   // tweak a bit up/down if needed
+
+  add([
+    rect(width(), 40),
+    pos(0, GROUND_Y),
+    area(),
+    body({ isStatic: true }),
+    opacity(0),            // invisible
+    "ground",
+  ]);
+
+  // ---- BUBBLE PLATFORMS ----
+  function addBubblePlatform(x, y) {
+    const baseScale = 0.28;
+
+    const bubble = add([
+      sprite("bubbles"),
+      pos(x, y),
+      scale(baseScale),
+      anchor("center"),
+      area(),
+      body({ isStatic: true }),
+      z(1),                 // behind ball
+      "bubblePlat",
+      {
+        popTimer: 0,
+        popped: false,
+        baseScale,
+      },
+    ]);
+
+    return bubble;
+  }
+
+  // PORTAL AT THE TOP → go to EARTH (level 2)
+  add([
+    sprite("portal"),
+    pos(width() / 2, -900),
+    scale(0.9),
+    anchor("center"),
+    area(),
+    "portal",
+  ]);
+
+  addBubblePlatform(width() / 2, 700);
+  addBubblePlatform(width() / 2 - 140, 520);
+  addBubblePlatform(width() / 2 + 140, 340);
+  addBubblePlatform(width() / 2, 90);
+  addBubblePlatform(width() / 2 - 120, -120);
+  addBubblePlatform(width() / 2 + 120, -330);
+  addBubblePlatform(width() / 2 - 100, -560);
+
+  ;
+
+  // ---- PLAYER ----
+  const player = add([
+    sprite("ball"),
+    pos(width() / 2, GROUND_Y),
+    scale(0.35),
+    anchor("bot"),     // feet on the ground / bubbles
+    area(),
+    body(),
+    z(2),              // in front of bubbles
+    "player",
+  ]);
+
+  const MOVE_SPEED = 260;
+  const JUMP_FORCE = 600;
+  const MAX_JUMPS = 2;
+  let jumpsLeft = MAX_JUMPS;
+
+  onKeyDown("left", () => {
+    player.move(-MOVE_SPEED, 0);
+  });
+
+  onKeyDown("right", () => {
+    player.move(MOVE_SPEED, 0);
+  });
+
+  onKeyPress("space", () => {
+    if (jumpsLeft > 0) {
+      const force = jumpsLeft === MAX_JUMPS ? JUMP_FORCE : JUMP_FORCE * 1.2;
+      player.jump(force);
+      jumpsLeft--;
+    }
+  });
+
+  // ---- PLAYER UPDATE (JUMPS + BOUNDS + FALL RESET) ----
+  player.onUpdate(() => {
+    if (player.isGrounded()) {
+      jumpsLeft = MAX_JUMPS;
+      player.pos.y += 4;
+    }
+
+    if (player.pos.x < 20) player.pos.x = 20;
+    if (player.pos.x > width() - 20) player.pos.x = width() - 20;
+
+    if (player.pos.y > height() + 100) {
+      go("water");
+    }
+  });
+
+  // ---- BUBBLE POP LOGIC ----
+  player.onCollideUpdate("bubblePlat", (b) => {
+    if (b.popped) return;
+
+    if (player.isGrounded()) {
+      b.popTimer += dt();
+    } else {
+      b.popTimer = 0;
+      b.scale = vec2(b.baseScale);
+    }
+
+    // squish / wiggle before popping
+    if (b.popTimer >= 0.8 && b.popTimer < 1.3) {
+      const s = wave(b.baseScale * 0.9, b.baseScale * 1.1, time() * 20);
+      b.scale = vec2(s);
+    }
+
+    // POP after ~1.3s
+    if (b.popTimer >= 1.3) {
+      b.popped = true;
+      destroy(b);
+      shake(3);
+    }
+  });
+
+  player.onCollideEnd("bubblePlat", (b) => {
+    if (!b.popped) {
+      b.popTimer = 0;
+      b.scale = vec2(b.baseScale);
+    }
+  });
+
+  // ---- PORTAL → EARTH LEVEL ----
+  player.onCollide("portal", () => {
+    go("earth");
+  });
+
+  // ---- CAMERA FOLLOW ----
+  onUpdate(() => {
+    let targetY = player.pos.y - 250;
+
+    const minCamY = -2000;
+    const maxCamY = height() / 2;
+
+    targetY = clamp(targetY, minCamY, maxCamY);
+    camPos(centerX, targetY);
+  });
+});
+
+
+// =======================
+// SCENE: EARTH LEVEL (LEVEL 2)
+// =======================
+scene("earth", () => {
+  currentLevel = "earth";
+
+  showLevelBadge("lvl2imgs/Level2.png", "Level 2");
+  showRetryBadge("retry.png", "retry");
+
+  const BG_WIDTH = 1080;
+  const BG_HEIGHT = 1920;
+
+  const BG_SCALE = Math.max(
+    width() / BG_WIDTH,
+    height() / BG_HEIGHT,
+  ) * 1.05;
+
+  const centerX = width() / 2;
+  const centerY = height() / 2;
+
+  // backgrounds
   add([
     sprite("earthBg"),
     pos(centerX, centerY),
@@ -93,7 +299,6 @@ scene("earth", () => {
     z(-2),
   ]);
 
-  // upper background (taller map)
   add([
     sprite("bg2"),
     pos(centerX, centerY - BG_HEIGHT * BG_SCALE),
@@ -102,7 +307,6 @@ scene("earth", () => {
     z(-2),
   ]);
 
-  // third background
   add([
     sprite("bg2"),
     pos(centerX, centerY - BG_HEIGHT * BG_SCALE * 2),
@@ -111,10 +315,9 @@ scene("earth", () => {
     z(-2),
   ]);
 
-
-  //GROUND
   const GROUND_Y = 900;
 
+  // ground
   add([
     rect(width(), 20),
     pos(0, GROUND_Y),
@@ -124,7 +327,7 @@ scene("earth", () => {
     "ground",
   ]);
 
-  //PLATFORMS
+  // platforms
   function addPlatform(x, y) {
     return add([
       sprite("log"),
@@ -163,16 +366,14 @@ scene("earth", () => {
       "moving",
       {
         startX: x,
-        range: range,
-        speed: speed,
-        dir: 1,   // 1 = right, -1 = left
-      }
+        range,
+        speed,
+        dir: 1,
+      },
     ]);
 
     plat.onUpdate(() => {
       plat.move(plat.speed * plat.dir, 0);
-
-      // bounce left/right
       if (plat.pos.x > plat.startX + plat.range) plat.dir = -1;
       if (plat.pos.x < plat.startX - plat.range) plat.dir = 1;
     });
@@ -180,8 +381,8 @@ scene("earth", () => {
     return plat;
   }
 
-  //PORTAL AT THE TOP
-  const portal = add([
+  // portal at top
+  add([
     sprite("portal"),
     pos(width() / 2, -900),
     scale(0.9),
@@ -190,7 +391,7 @@ scene("earth", () => {
     "portal",
   ]);
 
-  //PLATFORMS
+  // layout
   addPlatform(width() / 2, 750);
   addBrokenPlatform(width() / 2 - 140, 520);
   addMovingPlatform(width() / 2 + 140, 290, 150, 120);
@@ -199,7 +400,7 @@ scene("earth", () => {
   addMovingPlatform(width() / 2 + 120, -400, 180, 150);
   addBrokenPlatform(width() / 2, -630);
 
-  //PLAYER
+  // player
   const player = add([
     sprite("ball"),
     pos(width() / 2, GROUND_Y),
@@ -215,16 +416,9 @@ scene("earth", () => {
   const MAX_JUMPS = 2;
   let jumpsLeft = MAX_JUMPS;
 
-  // controls
-  onKeyDown("left", () => {
-    player.move(-MOVE_SPEED, 0);
-  });
+  onKeyDown("left", () => player.move(-MOVE_SPEED, 0));
+  onKeyDown("right", () => player.move(MOVE_SPEED, 0));
 
-  onKeyDown("right", () => {
-    player.move(MOVE_SPEED, 0);
-  });
-
-  // double jump
   onKeyPress("space", () => {
     if (jumpsLeft > 0) {
       let force = jumpsLeft === MAX_JUMPS ? JUMP_FORCE : JUMP_FORCE * 1.2;
@@ -233,7 +427,6 @@ scene("earth", () => {
     }
   });
 
-  // RESET JUMPS + LIMITS
   player.onUpdate(() => {
     if (player.isGrounded()) {
       jumpsLeft = MAX_JUMPS;
@@ -242,10 +435,9 @@ scene("earth", () => {
 
     if (player.pos.x < 20) player.pos.x = 20;
     if (player.pos.x > width() - 20) player.pos.x = width() - 20;
-
   });
 
-  // BROKEN PLATFORM LOGIC
+  // broken log logic
   player.onCollideUpdate("broken", (log) => {
     if (player.isGrounded()) {
       log.breakTimer += dt();
@@ -253,24 +445,21 @@ scene("earth", () => {
       log.breakTimer = 0;
     }
 
-    // shake between 0.7s and 1s
     if (log.breakTimer >= 0.7 && log.breakTimer < 1) {
       log.angle = wave(-5, 5, time() * 20);
     }
 
-    // break at 1s
     if (log.breakTimer >= 1) {
       destroy(log);
       shake(5);
     }
   });
 
-  //PORTAL COLLISION (NEXT LEVEL)
+  // portal → air level
   player.onCollide("portal", () => {
     go("airLevel");
   });
 
-  //CAMERA FOLLOW
   onUpdate(() => {
     let targetY = player.pos.y - 250;
 
@@ -283,9 +472,11 @@ scene("earth", () => {
   });
 });
 
-//Level 3 Airlevel
+// =======================
+// SCENE: AIR LEVEL (LEVEL 3)
+// =======================
 scene("airLevel", () => {
-  currentScene = "airLevel";
+  currentLevel = "airLevel";
 
   showLevelBadge("lvl3imgs/lvl3.png", "Level 3");
   showRetryBadge("retry.png", "Retry");
@@ -295,13 +486,13 @@ scene("airLevel", () => {
 
   const BG_SCALE = Math.max(
     width() / BG_WIDTH,
-    height() / BG_HEIGHT
+    height() / BG_HEIGHT,
   ) * 1.05;
 
   const centerX = width() / 2;
   const centerY = height() / 2;
 
-  //SKY BACKGROUNDS
+  // SKY BACKGROUNDS
   add([
     sprite("airbg"),
     pos(centerX, centerY),
@@ -326,7 +517,7 @@ scene("airLevel", () => {
     z(-2),
   ]);
 
-  //GROUND
+  // GROUND
   const GROUND_Y = 900;
 
   add([
@@ -338,16 +529,16 @@ scene("airLevel", () => {
     "ground",
   ]);
 
-  //CLOUD PLATFORMS
+  // CLOUD PLATFORMS
   function addCloud(x, y) {
     return add([
       sprite("cloud"),
       pos(x, y),
-      scale(0.6),     
+      scale(0.6),
       anchor("center"),
       area(),
       body({ isStatic: true }),
-      "cloud",           
+      "cloud",
     ]);
   }
 
@@ -359,14 +550,14 @@ scene("airLevel", () => {
       anchor("center"),
       area(),
       body({ isStatic: true }),
-      "cloud",             
+      "cloud",
       "movingCloud",
       {
         startX: x,
         range,
         speed,
         dir: 1,
-      }
+      },
     ]);
 
     plat.onUpdate(() => {
@@ -378,7 +569,6 @@ scene("airLevel", () => {
 
     return plat;
   }
-
 
   // PORTAL AT TOP
   const portal = add([
@@ -394,7 +584,7 @@ scene("airLevel", () => {
     portal.angle += dt() * 40;
   });
 
-  //  PLACE CLOUDS 
+  // PLACE CLOUDS 
   addCloud(width() / 2, 720);
   addMovingCloud(width() / 2 - 140, 520, 170, 130);
   addCloud(width() / 2 + 120, 320);
@@ -403,7 +593,7 @@ scene("airLevel", () => {
   addMovingCloud(width() / 2, -360);
   addCloud(width() / 2 - 130, -600);
 
-  //  PLAYER 
+  // PLAYER 
   const player = add([
     sprite("ball"),
     pos(width() / 2, GROUND_Y),
@@ -444,9 +634,11 @@ scene("airLevel", () => {
     if (player.pos.x < 20) player.pos.x = 20;
     if (player.pos.x > width() - 20) player.pos.x = width() - 20;
 
+    // fell off → restart air level
+    if (player.pos.y > height() + 100) {
+      go("airLevel");
+    }
   });
-
-
 
   // WIND GUSTS
   function spawnWindBurst(y, dir = 1, force = 900, speed = 260) {
@@ -455,7 +647,7 @@ scene("airLevel", () => {
     const wind = add([
       sprite("gust"),
       pos(startX, y),
-      scale(0.35),   
+      scale(0.35),
       anchor("center"),
       area(),
       "wind",
@@ -468,7 +660,6 @@ scene("airLevel", () => {
 
     wind.onUpdate(() => {
       wind.move(wind.speed * wind.dir, 0);
-
       wind.pos.y += wave(-0.4, 0.4, time() * 4);
 
       if (wind.dir === 1 && wind.pos.x > width() + 180) destroy(wind);
@@ -498,11 +689,13 @@ scene("airLevel", () => {
     { y: -480, dir: 1,  fired: false },
     { y: -640, dir: -1, fired: false },
   ];
-  // Clouds disappear
+
+  // Clouds disappear (only when standing on them)
   player.onCollideUpdate("cloud", (cloud) => {
     if (player.isGrounded()) {
       if (cloud.breakTimer === undefined) cloud.breakTimer = 0;
       cloud.breakTimer += dt();
+
       if (cloud.breakTimer >= 1 && cloud.breakTimer < 2) {
         cloud.angle = wave(-5, 5, time() * 20);
       }
@@ -535,8 +728,6 @@ scene("airLevel", () => {
     }
   });
 
-
-
   // portal → win screen
   player.onCollide("portal", () => {
     go("win");
@@ -545,7 +736,6 @@ scene("airLevel", () => {
 
 // WIN SCREEN
 scene("win", () => {
-  currentScene = "win";
   hideRetryBadge();
   hideLevelBadge();
 
@@ -556,5 +746,5 @@ scene("win", () => {
   ]);
 });
 
-// START GAME
-go("earth");
+// START GAME: WATER FIRST
+go("water");
