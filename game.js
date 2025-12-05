@@ -1356,4 +1356,4 @@ scene("outro", () => {
 });
 
 // START GAME: WATER FIRST
-go("outro");
+go("intro");
